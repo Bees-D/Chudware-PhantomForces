@@ -1,9 +1,20 @@
 local PAT = "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"
-local REPO = "https://" .. PAT .. "@raw.githubusercontent.com/Bees-D/Chudware-PhantomForces/master/"
+local REPO = "https://raw.githubusercontent.com/Bees-D/Chudware-PhantomForces/master/"
+
+local httpReq = (syn and syn.request) or request or http_request or http.request
+
+local function fetch(url)
+	if httpReq then
+		local resp = httpReq({ Url = url, Method = "GET", Headers = { ["Authorization"] = "token " .. PAT } })
+		if resp.StatusCode == 200 then return resp.Body end
+		error("HTTP " .. tostring(resp.StatusCode))
+	end
+	return game:HttpGet(url)
+end
 
 local function load(path)
 	local url = REPO .. path
-	local ok, content = pcall(function() return game:HttpGet(url) end)
+	local ok, content = pcall(fetch, url)
 	if not ok then error("Cannot fetch " .. path .. ": " .. tostring(content)) end
 	if not content or content == "" then error("Empty response for " .. path) end
 	local fn, err = loadstring(content, "@" .. path)
@@ -45,7 +56,7 @@ local FEATURES = {
 	{ tab = "Combat",   files = { "features/combat/aimbot.luau", "features/combat/silent_aim.luau", "features/combat/triggerbot.luau", "features/combat/no_recoil.luau" } },
 	{ tab = "Visuals",  files = { "features/visuals/player_esp.luau", "features/visuals/skeleton_esp.luau", "features/visuals/chams.luau", "features/visuals/crosshair.luau", "features/visuals/fullbright.luau" } },
 	{ tab = "Movement", files = { "features/movement/fly_noclip.luau", "features/movement/speed.luau" } },
-	{ tab = "Misc",     files = { "features/visuals/freecam.luau" } },
+	{ tab = "Misc",     files = { "features/visuals/freecam.luau", "features/misc/unlock_attachments.luau" } },
 }
 
 local loaded = 0
