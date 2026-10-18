@@ -1,72 +1,73 @@
+-- Chudware — Phantom Forces loader. Public repo; simple HttpGet.
 local REPO = "https://raw.githubusercontent.com/Bees-D/Chudware-PhantomForces/master/"
 
 local function load(path)
 	local url = REPO .. path
 	local ok, content = pcall(function() return game:HttpGet(url) end)
-	if not ok then error("Cannot fetch " .. path .. ": " .. tostring(content)) end
-	if not content or content == "" then error("Empty response for " .. path) end
+	if not ok then error("fetch " .. path .. ": " .. tostring(content)) end
+	if not content or content == "" then error("empty " .. path) end
 	local fn, err = loadstring(content, "@" .. path)
-	if not fn then error("Parse error in " .. path .. ": " .. tostring(err)) end
+	if not fn then error("parse " .. path .. ": " .. tostring(err)) end
 	return fn()
 end
 
+_G._chud_modules = {}
 local Services = load("core/services.luau")
 local Util     = load("core/util.luau")
-local Config   = load("core/config.luau")
+local Tracker  = load("core/tracker.luau")
 local Runtime  = load("core/runtime.luau")
+local Config   = (function() local ok, c = pcall(load, "core/config.luau"); return ok and c or nil end)()
 local Notify   = load("ui/notify.luau")
 
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-
 Notify.setRayfield(Rayfield)
 
 local Window = Rayfield:CreateWindow({
-	Name = "Chudware - Phantom Forces",
-	Icon = 0,
+	Name = "Chudware · Phantom Forces",
 	LoadingTitle = "Chudware PF",
-	LoadingSubtitle = "Loading...",
+	LoadingSubtitle = "reversed + live-verified",
 	Theme = "Amethyst",
 	DisableRayfieldPrompts = true,
 	DisableBuildWarnings = true,
-	ConfigurationSaving = { Enabled = true, FolderName = "ChudwarePF", FileName = "config" },
+	ConfigurationSaving = { Enabled = false },
 	KeySystem = false,
 })
 
 local ctx = {
-	services = Services,
-	util     = Util,
-	config   = Config,
-	runtime  = Runtime,
-	notify   = Notify,
+	services = Services, util = Util, tracker = Tracker,
+	runtime = Runtime, config = Config, notify = Notify,
 }
+
+-- Tracker runs FIRST each frame (connected before Runtime's loop) so features read fresh targets.
+Services.RunService.RenderStepped:Connect(function()
+	pcall(Tracker.update)
+end)
 
 local FEATURES = {
-	{ tab = "Combat",   files = { "features/combat/aimbot.luau", "features/combat/silent_aim.luau", "features/combat/triggerbot.luau", "features/combat/no_recoil.luau" } },
-	{ tab = "Visuals",  files = { "features/visuals/player_esp.luau", "features/visuals/skeleton_esp.luau", "features/visuals/chams.luau", "features/visuals/crosshair.luau", "features/visuals/fullbright.luau" } },
-	{ tab = "Movement", files = { "features/movement/fly_noclip.luau", "features/movement/speed.luau" } },
-	{ tab = "Misc",     files = { "features/visuals/freecam.luau", "features/misc/unlock_attachments.luau" } },
+	{ tab = "Visuals",  files = {
+		"features/visuals/player_esp.luau", "features/visuals/chams.luau",
+		"features/visuals/crosshair.luau", "features/visuals/fullbright.luau",
+		"features/visuals/loot_esp.luau" } },
+	{ tab = "Combat",   files = {
+		"features/combat/aimbot.luau", "features/combat/triggerbot.luau" } },
+	{ tab = "Weapons",  files = { "features/weapons/gun_mods.luau" } },
+	{ tab = "Unlocks",  files = { "features/misc/unlock_attachments.luau" } },
+	{ tab = "Misc",     files = { "features/misc/freecam.luau", "features/misc/fov.luau" } },
 }
 
-local loaded = 0
-local failed = 0
-
-for _, group in ipairs(FEATURES) do
-	local tab = Window:CreateTab(group.tab, nil)
-	for _, file in ipairs(group.files) do
-		local ok2, feature = pcall(load, file)
-		if ok2 and feature and feature.init then
-			local ok3, err3 = pcall(feature.init, tab, ctx)
-			if ok3 then
-				loaded = loaded + 1
-			else
-				failed = failed + 1
-				warn("[ChudwarePF] init failed: " .. file .. " - " .. tostring(err3))
-			end
+local loaded, failed = 0, 0
+for _, grp in ipairs(FEATURES) do
+	local tabObj = Window:CreateTab(grp.tab)
+	for _, file in ipairs(grp.files) do
+		local ok, feat = pcall(load, file)
+		if ok and feat and feat.init then
+			local ok2, err = pcall(feat.init, tabObj, ctx)
+			if ok2 then loaded = loaded + 1 else failed = failed + 1; warn("[ChudPF] init " .. file .. ": " .. tostring(err)) end
 		else
-			failed = failed + 1
-			warn("[ChudwarePF] load failed: " .. file .. " - " .. tostring(feature))
+			failed = failed + 1; warn("[ChudPF] load " .. file .. ": " .. tostring(feat))
 		end
 	end
 end
 
+Runtime.start()  -- CRITICAL: connects RenderStepped/Heartbeat so loop features actually run
 Notify.ok("Loaded " .. loaded .. " features" .. (failed > 0 and (" (" .. failed .. " failed)") or ""))

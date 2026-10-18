@@ -2,140 +2,109 @@ local Feature = {}
 Feature.name = "Player ESP"
 
 local enabled = false
-local showBox = true
-local showHealth = true
-local showName = true
-local showDist = true
-local showSnapline = false
-local maxDist = 1000
-local drawings = {}
-local UPDATE_INTERVAL = 1/20
-local lastUpdate = 0
+local showBox, showName, showDist, showTracer, showHealth = true, true, true, false, true
+local teamCheck = true
+local pool = {}
+
+local COL_ENEMY = Color3.fromRGB(255, 60, 60)
+local COL_TEAM = Color3.fromRGB(60, 200, 90)
+local COL_UNK = Color3.fromRGB(230, 220, 90)
 
 function Feature.init(tab, ctx)
-	local S = ctx.services
-	local U = ctx.util
-	local R = ctx.runtime
+	local S, U, R, T = ctx.services, ctx.util, ctx.runtime, ctx.tracker
 
 	tab:CreateSection("Player ESP")
-	tab:CreateToggle({ Name = "Player ESP", CurrentValue = false, Flag = "pf_player_esp", Callback = function(v) enabled = v end })
-	tab:CreateToggle({ Name = "Boxes", CurrentValue = true, Flag = "pf_esp_box", Callback = function(v) showBox = v end })
-	tab:CreateToggle({ Name = "Health Bar", CurrentValue = true, Flag = "pf_esp_hp", Callback = function(v) showHealth = v end })
-	tab:CreateToggle({ Name = "Names", CurrentValue = true, Flag = "pf_esp_name", Callback = function(v) showName = v end })
+	tab:CreateToggle({ Name = "Enabled", CurrentValue = false, Flag = "pf_esp", Callback = function(v) enabled = v end })
+	tab:CreateToggle({ Name = "Box", CurrentValue = true, Flag = "pf_esp_box", Callback = function(v) showBox = v end })
+	tab:CreateToggle({ Name = "Name", CurrentValue = true, Flag = "pf_esp_name", Callback = function(v) showName = v end })
 	tab:CreateToggle({ Name = "Distance", CurrentValue = true, Flag = "pf_esp_dist", Callback = function(v) showDist = v end })
-	tab:CreateToggle({ Name = "Snaplines", CurrentValue = false, Flag = "pf_esp_snap", Callback = function(v) showSnapline = v end })
-	tab:CreateSlider({ Name = "Max Distance", Range = {50, 3000}, Increment = 50, CurrentValue = 1000, Flag = "pf_esp_maxdist", Callback = function(v) maxDist = v end })
+	tab:CreateToggle({ Name = "Health bar", CurrentValue = true, Flag = "pf_esp_hp", Callback = function(v) showHealth = v end })
+	tab:CreateToggle({ Name = "Tracers", CurrentValue = false, Flag = "pf_esp_tracer", Callback = function(v) showTracer = v end })
+	tab:CreateToggle({ Name = "Team check (hide allies)", CurrentValue = true, Flag = "pf_esp_team", Callback = function(v) teamCheck = v end })
 
-	local function ensureDrawings(key)
-		if drawings[key] then return drawings[key] end
-		local d = {
-			box = U.newDrawing("Square", { Thickness = 1, Filled = false, Transparency = 1 }),
-			name = U.newDrawing("Text", { Size = 13, Center = true, Outline = true, Font = 2 }),
-			hp = U.newDrawing("Line", { Thickness = 2 }),
-			hpBg = U.newDrawing("Line", { Thickness = 2, Color = Color3.new(0, 0, 0) }),
-			snap = U.newDrawing("Line", { Thickness = 1, Transparency = 0.5 }),
+	local function slot(i)
+		if pool[i] then return pool[i] end
+		local s = {
+			box = U.newDrawing("Square", { Thickness = 1, Filled = false, Color = COL_ENEMY, Transparency = 1 }),
+			name = U.newDrawing("Text", { Size = 13, Center = true, Outline = true, Color = Color3.new(1,1,1) }),
+			dist = U.newDrawing("Text", { Size = 12, Center = true, Outline = true, Color = Color3.new(1,1,1) }),
+			tracer = U.newDrawing("Line", { Thickness = 1, Color = COL_ENEMY, Transparency = 1 }),
+			hpbg = U.newDrawing("Square", { Thickness = 1, Filled = true, Color = Color3.new(0,0,0), Transparency = 0.6 }),
+			hp = U.newDrawing("Square", { Thickness = 1, Filled = true, Color = Color3.fromRGB(60,220,90), Transparency = 1 }),
 		}
-		drawings[key] = d
-		return d
+		pool[i] = s
+		return s
 	end
 
-	local function hideAll(d)
-		if not d then return end
-		for _, obj in pairs(d) do U.hideDrawing(obj) end
-	end
-
-	R.onRender("pf_player_esp", function()
-		if not enabled then
-			for _, d in pairs(drawings) do hideAll(d) end
-			return
+	local function hideAll()
+		for _, s in pairs(pool) do
+			for _, d in pairs(s) do U.hideDrawing(d) end
 		end
+	end
 
-		local now = tick()
-		if now - lastUpdate < UPDATE_INTERVAL then return end
-		lastUpdate = now
-
+	R.onRender("pf_esp", function()
+		if not enabled then hideAll() return end
 		local cam = S.Camera()
-		local hrp = S.HRP()
-		if not cam or not hrp then
-			for _, d in pairs(drawings) do hideAll(d) end
-			return
-		end
-
-		local vpSize = cam.ViewportSize
-		local seen = {}
-
-		for _, player in ipairs(S.Players:GetPlayers()) do
-			if U.isEnemy(player) then
-				local char = player.Character
-				local phrp = char and char:FindFirstChild("HumanoidRootPart")
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				if phrp and hum and hum.Health > 0 then
-					local dist = (phrp.Position - hrp.Position).Magnitude
-					if dist <= maxDist then
-						local v, onScreen = U.worldToViewport(phrp.Position)
-						if onScreen then
-							seen[player.Name] = true
-							local d = ensureDrawings(player.Name)
-							local scaleFactor = 1 / (v.Z * math.tan(math.rad(cam.FieldOfView / 2)) * 2 / vpSize.Y)
-							local boxH = math.clamp(scaleFactor * 5, 10, 800)
-							local boxW = boxH * 0.45
-							local color = Color3.fromRGB(255, 50, 50)
-
-							if showBox and d.box then
-								d.box.Size = Vector2.new(boxW, boxH)
-								d.box.Position = Vector2.new(v.X - boxW / 2, v.Y - boxH / 2)
-								d.box.Color = color
-								d.box.Visible = true
-							elseif d.box then d.box.Visible = false end
-
-							if showName and d.name then
-								local txt = player.Name
-								if showDist then txt = txt .. " [" .. math.floor(dist) .. "m]" end
-								d.name.Text = txt
-								d.name.Position = Vector2.new(v.X, v.Y - boxH / 2 - 16)
-								d.name.Color = color
-								d.name.Visible = true
-							elseif d.name then d.name.Visible = false end
-
-							if showHealth and d.hpBg and d.hp then
-								local hpFrac = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-								local barX = v.X - boxW / 2 - 4
-								d.hpBg.From = Vector2.new(barX, v.Y - boxH / 2)
-								d.hpBg.To = Vector2.new(barX, v.Y + boxH / 2)
-								d.hpBg.Visible = true
-								d.hp.From = Vector2.new(barX, v.Y + boxH / 2)
-								d.hp.To = Vector2.new(barX, v.Y + boxH / 2 - boxH * hpFrac)
-								d.hp.Color = Color3.fromRGB(255 * (1 - hpFrac), 255 * hpFrac, 0)
-								d.hp.Visible = true
-							else
-								if d.hpBg then d.hpBg.Visible = false end
-								if d.hp then d.hp.Visible = false end
-							end
-
-							if showSnapline and d.snap then
-								d.snap.From = Vector2.new(vpSize.X / 2, vpSize.Y)
-								d.snap.To = Vector2.new(v.X, v.Y)
-								d.snap.Color = color
-								d.snap.Visible = true
-							elseif d.snap then d.snap.Visible = false end
-						else
-							hideAll(drawings[player.Name])
-						end
-					else
-						hideAll(drawings[player.Name])
-					end
-				else
-					hideAll(drawings[player.Name])
+		if not cam then return end
+		local vp = cam.ViewportSize
+		local targets = T.targets
+		local used = 0
+		for _, tg in ipairs(targets) do
+			local enemy = tg.isEnemy
+			-- team check: skip known-allies; show enemies + unknowns
+			if teamCheck and enemy == false then
+				-- ally, skip
+			else
+				local headPos = tg.pos + Vector3.new(0, 2.5, 0)
+				local footPos = tg.pos + Vector3.new(0, -2.5, 0)
+				local hv, onH = cam:WorldToViewportPoint(headPos)
+				local fv, onF = cam:WorldToViewportPoint(footPos)
+				if onH or onF then
+					used = used + 1
+					local s = slot(used)
+					local col = (enemy == true) and COL_ENEMY or (enemy == false and COL_TEAM or COL_UNK)
+					local h = math.abs(hv.Y - fv.Y)
+					local w = h * 0.5
+					local cx = (hv.X + fv.X) / 2
+					local top = math.min(hv.Y, fv.Y)
+					-- box
+					if showBox then
+						s.box.Color = col; s.box.Size = Vector2.new(w, h)
+						s.box.Position = Vector2.new(cx - w/2, top); s.box.Visible = true
+					else U.hideDrawing(s.box) end
+					-- name
+					if showName and tg.name then
+						s.name.Text = tg.name; s.name.Color = col
+						s.name.Position = Vector2.new(cx, top - 15); s.name.Visible = true
+					else U.hideDrawing(s.name) end
+					-- distance
+					if showDist then
+						local d = U.distanceFromCam(tg.pos)
+						s.dist.Text = string.format("%dm", math.floor(d))
+						s.dist.Position = Vector2.new(cx, top + h + 2); s.dist.Visible = true
+					else U.hideDrawing(s.dist) end
+					-- tracer
+					if showTracer then
+						s.tracer.Color = col
+						s.tracer.From = Vector2.new(vp.X/2, vp.Y)
+						s.tracer.To = Vector2.new(cx, top + h); s.tracer.Visible = true
+					else U.hideDrawing(s.tracer) end
+					-- health bar (left of box)
+					if showHealth and tg.hpFrac then
+						local bx = cx - w/2 - 5
+						s.hpbg.Size = Vector2.new(3, h); s.hpbg.Position = Vector2.new(bx, top); s.hpbg.Visible = true
+						local hh = h * math.clamp(tg.hpFrac, 0, 1)
+						s.hp.Size = Vector2.new(3, hh); s.hp.Position = Vector2.new(bx, top + (h - hh)); s.hp.Visible = true
+					else U.hideDrawing(s.hpbg); U.hideDrawing(s.hp) end
 				end
 			end
 		end
-
-		for key, d in pairs(drawings) do
-			if not seen[key] then hideAll(d) end
+		-- hide unused slots
+		for i = used + 1, #pool do
+			for _, d in pairs(pool[i]) do U.hideDrawing(d) end
 		end
 	end)
 end
 
 function Feature.toggle(state) enabled = state end
-
 return Feature

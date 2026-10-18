@@ -2,76 +2,59 @@ local Feature = {}
 Feature.name = "Aimbot"
 
 local enabled = false
-local fov = 200
-local smoothing = 5
-local targetBone = "Head"
-local showFOV = true
-local fovCircle = nil
+local fov = 150
+local smooth = 6
+local headOffset = 2.5
+local showFov = true
+local teamCheck = true
+local holdKey = Enum.KeyCode.C
+local fovCircle
 
 function Feature.init(tab, ctx)
-	local S = ctx.services
-	local U = ctx.util
-	local R = ctx.runtime
+	local S, U, R, T = ctx.services, ctx.util, ctx.runtime, ctx.tracker
 
 	tab:CreateSection("Aimbot")
-	tab:CreateToggle({ Name = "Aimbot (Hold C)", CurrentValue = false, Flag = "pf_aimbot", Callback = function(v) enabled = v end })
-	tab:CreateSlider({ Name = "FOV", Range = {50, 800}, Increment = 10, CurrentValue = 200, Flag = "pf_aim_fov", Callback = function(v) fov = v end })
-	tab:CreateSlider({ Name = "Smoothing", Range = {1, 20}, Increment = 1, CurrentValue = 5, Flag = "pf_aim_smooth", Callback = function(v) smoothing = v end })
-	tab:CreateDropdown({ Name = "Target Bone", Options = {"Head", "Torso", "HumanoidRootPart"}, CurrentOption = {"Head"}, Flag = "pf_aim_bone", Callback = function(v) if type(v) == "table" then v = v[1] end; targetBone = v end })
-	tab:CreateToggle({ Name = "Show FOV Circle", CurrentValue = true, Flag = "pf_aim_showfov", Callback = function(v) showFOV = v end })
+	tab:CreateToggle({ Name = "Aimbot (hold C)", CurrentValue = false, Flag = "pf_aim", Callback = function(v) enabled = v end })
+	tab:CreateSlider({ Name = "FOV", Range = {30, 600}, Increment = 10, CurrentValue = 150, Flag = "pf_aim_fov", Callback = function(v) fov = v end })
+	tab:CreateSlider({ Name = "Smoothing", Range = {1, 20}, Increment = 1, CurrentValue = 6, Flag = "pf_aim_smooth", Callback = function(v) smooth = v end })
+	tab:CreateSlider({ Name = "Head offset (studs)", Range = {0, 5}, Increment = 0.1, CurrentValue = 2.5, Flag = "pf_aim_head", Callback = function(v) headOffset = v end })
+	tab:CreateToggle({ Name = "Team check", CurrentValue = true, Flag = "pf_aim_team", Callback = function(v) teamCheck = v end })
+	tab:CreateToggle({ Name = "Show FOV circle", CurrentValue = true, Flag = "pf_aim_showfov", Callback = function(v) showFov = v end })
 
-	fovCircle = U.newDrawing("Circle", { Thickness = 1, Filled = false, Color = Color3.fromRGB(255, 255, 255), Transparency = 0.5 })
+	fovCircle = U.newDrawing("Circle", { Thickness = 1, Filled = false, Color = Color3.fromRGB(255,255,255), Transparency = 0.5, NumSides = 48 })
 
-	local function getTarget()
-		local cam = S.Camera()
-		local hrp = S.HRP()
-		if not cam or not hrp then return nil end
-
-		local vpCenter = cam.ViewportSize / 2
-		local closest = nil
-		local closestDist = fov
-
-		for _, player in ipairs(S.Players:GetPlayers()) do
-			if U.isEnemy(player) then
-				local char = player.Character
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				local bone = char and char:FindFirstChild(targetBone)
-				if bone and hum and hum.Health > 0 then
-					local v, onScreen = U.worldToViewport(bone.Position)
-					if onScreen then
-						local screenDist = (Vector2.new(v.X, v.Y) - vpCenter).Magnitude
-						if screenDist < closestDist then
-							closestDist = screenDist
-							closest = bone
-						end
-					end
+	local function pickTarget(cam)
+		local vpc = cam.ViewportSize / 2
+		local best, bestD = nil, fov
+		for _, tg in ipairs(T.targets) do
+			if not (teamCheck and tg.isEnemy == false) then
+				local aimPos = tg.pos + Vector3.new(0, headOffset, 0)
+				local v, on = cam:WorldToViewportPoint(aimPos)
+				if on then
+					local sd = (Vector2.new(v.X, v.Y) - vpc).Magnitude
+					if sd < bestD then bestD = sd; best = aimPos end
 				end
 			end
 		end
-		return closest
+		return best
 	end
 
-	R.onRender("pf_aimbot", function(dt)
+	R.onRender("pf_aim", function()
 		local cam = S.Camera()
 		if not cam then return end
-
 		if fovCircle then
 			fovCircle.Position = cam.ViewportSize / 2
 			fovCircle.Radius = fov
-			fovCircle.Visible = enabled and showFOV
+			fovCircle.Visible = enabled and showFov
 		end
-
 		if not enabled then return end
-		if not S.UIS:IsKeyDown(Enum.KeyCode.C) then return end
-
-		local target = getTarget()
-		if not target then return end
-
-		local targetCF = CFrame.lookAt(cam.CFrame.Position, target.Position)
-		cam.CFrame = cam.CFrame:Lerp(targetCF, 1 / smoothing)
+		if not S.UIS:IsKeyDown(holdKey) then return end
+		local aimPos = pickTarget(cam)
+		if not aimPos then return end
+		local goal = CFrame.lookAt(cam.CFrame.Position, aimPos)
+		cam.CFrame = cam.CFrame:Lerp(goal, 1 / smooth)
 	end)
 end
 
 function Feature.toggle(state) enabled = state end
-
 return Feature

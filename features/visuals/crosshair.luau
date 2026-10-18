@@ -2,70 +2,34 @@ local Feature = {}
 Feature.name = "Crosshair"
 
 local enabled = false
-local size = 10
-local gap = 5
-local thickness = 1
-local xhairColor = Color3.fromRGB(0, 255, 0)
-local showDot = true
-local lines = {}
+local gap, len = 4, 8
+local dot = {}
 
 function Feature.init(tab, ctx)
-	local S = ctx.services
-	local U = ctx.util
-	local R = ctx.runtime
-
+	local S, U, R = ctx.services, ctx.util, ctx.runtime
 	tab:CreateSection("Crosshair")
-	tab:CreateToggle({ Name = "Custom Crosshair", CurrentValue = false, Flag = "pf_xhair", Callback = function(v) enabled = v end })
-	tab:CreateSlider({ Name = "Size", Range = {2, 30}, Increment = 1, CurrentValue = 10, Flag = "pf_xhair_size", Callback = function(v) size = v end })
-	tab:CreateSlider({ Name = "Gap", Range = {0, 15}, Increment = 1, CurrentValue = 5, Flag = "pf_xhair_gap", Callback = function(v) gap = v end })
-	tab:CreateColorPicker({ Name = "Color", Color = xhairColor, Flag = "pf_xhair_color", Callback = function(v) xhairColor = v end })
-	tab:CreateToggle({ Name = "Center Dot", CurrentValue = true, Flag = "pf_xhair_dot", Callback = function(v) showDot = v end })
+	tab:CreateToggle({ Name = "Enabled", CurrentValue = false, Flag = "pf_cross", Callback = function(v) enabled = v end })
+	tab:CreateSlider({ Name = "Gap", Range = {0, 20}, Increment = 1, CurrentValue = 4, Flag = "pf_cross_gap", Callback = function(v) gap = v end })
+	tab:CreateSlider({ Name = "Length", Range = {2, 30}, Increment = 1, CurrentValue = 8, Flag = "pf_cross_len", Callback = function(v) len = v end })
 
-	lines.top = U.newDrawing("Line", { Thickness = thickness })
-	lines.bottom = U.newDrawing("Line", { Thickness = thickness })
-	lines.left = U.newDrawing("Line", { Thickness = thickness })
-	lines.right = U.newDrawing("Line", { Thickness = thickness })
-	lines.dot = U.newDrawing("Circle", { Thickness = 1, Filled = true, Radius = 2 })
+	local col = Color3.fromRGB(0,255,0)
+	local lines = {
+		U.newDrawing("Line", { Thickness = 1, Color = col, Transparency = 1 }),
+		U.newDrawing("Line", { Thickness = 1, Color = col, Transparency = 1 }),
+		U.newDrawing("Line", { Thickness = 1, Color = col, Transparency = 1 }),
+		U.newDrawing("Line", { Thickness = 1, Color = col, Transparency = 1 }),
+	}
 
-	R.onRender("pf_crosshair", function()
-		if not enabled then
-			for _, d in pairs(lines) do U.hideDrawing(d) end
-			return
-		end
-
-		local cam = S.Camera()
-		if not cam then return end
-		local cx = cam.ViewportSize.X / 2
-		local cy = cam.ViewportSize.Y / 2
-
-		if lines.top then
-			lines.top.From = Vector2.new(cx, cy - gap - size)
-			lines.top.To = Vector2.new(cx, cy - gap)
-			lines.top.Color = xhairColor; lines.top.Visible = true
-		end
-		if lines.bottom then
-			lines.bottom.From = Vector2.new(cx, cy + gap)
-			lines.bottom.To = Vector2.new(cx, cy + gap + size)
-			lines.bottom.Color = xhairColor; lines.bottom.Visible = true
-		end
-		if lines.left then
-			lines.left.From = Vector2.new(cx - gap - size, cy)
-			lines.left.To = Vector2.new(cx - gap, cy)
-			lines.left.Color = xhairColor; lines.left.Visible = true
-		end
-		if lines.right then
-			lines.right.From = Vector2.new(cx + gap, cy)
-			lines.right.To = Vector2.new(cx + gap + size, cy)
-			lines.right.Color = xhairColor; lines.right.Visible = true
-		end
-		if lines.dot then
-			lines.dot.Position = Vector2.new(cx, cy)
-			lines.dot.Color = xhairColor
-			lines.dot.Visible = showDot
-		end
+	R.onRender("pf_cross", function()
+		if not enabled then for _, l in ipairs(lines) do U.hideDrawing(l) end return end
+		local cam = S.Camera(); if not cam then return end
+		local c = cam.ViewportSize / 2
+		lines[1].From = Vector2.new(c.X - gap - len, c.Y); lines[1].To = Vector2.new(c.X - gap, c.Y); lines[1].Visible = true
+		lines[2].From = Vector2.new(c.X + gap, c.Y); lines[2].To = Vector2.new(c.X + gap + len, c.Y); lines[2].Visible = true
+		lines[3].From = Vector2.new(c.X, c.Y - gap - len); lines[3].To = Vector2.new(c.X, c.Y - gap); lines[3].Visible = true
+		lines[4].From = Vector2.new(c.X, c.Y + gap); lines[4].To = Vector2.new(c.X, c.Y + gap + len); lines[4].Visible = true
 	end)
 end
 
 function Feature.toggle(state) enabled = state end
-
 return Feature
