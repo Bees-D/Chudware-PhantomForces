@@ -1,20 +1,8 @@
-local PAT = "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"
 local REPO = "https://raw.githubusercontent.com/Bees-D/Chudware-PhantomForces/master/"
-
-local httpReq = (syn and syn.request) or request or http_request or http.request
-
-local function fetch(url)
-	if httpReq then
-		local resp = httpReq({ Url = url, Method = "GET", Headers = { ["Authorization"] = "token " .. PAT } })
-		if resp.StatusCode == 200 then return resp.Body end
-		error("HTTP " .. tostring(resp.StatusCode))
-	end
-	return game:HttpGet(url)
-end
 
 local function load(path)
 	local url = REPO .. path
-	local ok, content = pcall(fetch, url)
+	local ok, content = pcall(function() return game:HttpGet(url) end)
 	if not ok then error("Cannot fetch " .. path .. ": " .. tostring(content)) end
 	if not content or content == "" then error("Empty response for " .. path) end
 	local fn, err = loadstring(content, "@" .. path)
