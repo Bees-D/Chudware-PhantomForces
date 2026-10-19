@@ -14,7 +14,7 @@ function Feature.init(tab, ctx)
 	local S, U, R, T = ctx.services, ctx.util, ctx.runtime, ctx.tracker
 
 	tab:CreateSection("Aimbot")
-	tab:CreateToggle({ Name = "Aimbot (hold C)", CurrentValue = false, Flag = "pf_aim", Callback = function(v) enabled = v end })
+	tab:CreateToggle({ Name = "Aimbot (hold RMB/ADS)", CurrentValue = false, Flag = "pf_aim", Callback = function(v) enabled = v end })
 	tab:CreateSlider({ Name = "FOV", Range = {30, 600}, Increment = 10, CurrentValue = 150, Flag = "pf_aim_fov", Callback = function(v) fov = v end })
 	tab:CreateSlider({ Name = "Smoothing", Range = {1, 20}, Increment = 1, CurrentValue = 6, Flag = "pf_aim_smooth", Callback = function(v) smooth = v end })
 	tab:CreateSlider({ Name = "Head offset (studs)", Range = {0, 5}, Increment = 0.1, CurrentValue = 2.5, Flag = "pf_aim_head", Callback = function(v) headOffset = v end })
@@ -48,7 +48,7 @@ function Feature.init(tab, ctx)
 			fovCircle.Visible = enabled and showFov
 		end
 		if not enabled then return end
-		if not S.UIS:IsKeyDown(holdKey) then return end
+		if not S.UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
 		local aimPos = pickTarget(cam)
 		if not aimPos then return end
 		local goal = CFrame.lookAt(cam.CFrame.Position, aimPos)

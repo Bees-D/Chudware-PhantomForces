@@ -87,6 +87,65 @@ function Util.setAllNumbers(tbl, value, depth, seen)
 	return n
 end
 
+-- Logged patch: records {t,k,orig} into `log` so a toggle can restore originals.
+function Util.patchKeyLogged(tbl, keyName, value, log, depth, seen)
+	depth = depth or 0; seen = seen or {}
+	if type(tbl) ~= "table" or depth > 8 or seen[tbl] then return 0 end
+	seen[tbl] = true
+	if setreadonly then pcall(setreadonly, tbl, false) end
+	local n = 0
+	for k, v in pairs(tbl) do
+		if k == keyName then
+			log[#log + 1] = { t = tbl, k = k, orig = v }
+			if pcall(function() tbl[k] = value end) then n = n + 1 end
+		elseif type(v) == "table" then
+			n = n + Util.patchKeyLogged(v, keyName, value, log, depth + 1, seen)
+		end
+	end
+	return n
+end
+
+-- Zero every number leaf inside any subtable named subName, logging originals.
+function Util.zeroSubtableLogged(tbl, subName, value, log, depth, seen)
+	depth = depth or 0; seen = seen or {}
+	if type(tbl) ~= "table" or depth > 8 or seen[tbl] then return 0 end
+	seen[tbl] = true
+	local n = 0
+	for k, v in pairs(tbl) do
+		if k == subName and type(v) == "table" then
+			n = n + Util.setAllNumbersLogged(v, value, log)
+		elseif type(v) == "table" then
+			n = n + Util.zeroSubtableLogged(v, subName, value, log, depth + 1, seen)
+		end
+	end
+	return n
+end
+
+function Util.setAllNumbersLogged(tbl, value, log, depth, seen)
+	depth = depth or 0; seen = seen or {}
+	if type(tbl) ~= "table" or depth > 8 or seen[tbl] then return 0 end
+	seen[tbl] = true
+	if setreadonly then pcall(setreadonly, tbl, false) end
+	local n = 0
+	for k, v in pairs(tbl) do
+		if type(v) == "number" then
+			log[#log + 1] = { t = tbl, k = k, orig = v }
+			if pcall(function() tbl[k] = value end) then n = n + 1 end
+		elseif type(v) == "table" then
+			n = n + Util.setAllNumbersLogged(v, value, log, depth + 1, seen)
+		end
+	end
+	return n
+end
+
+function Util.restoreLog(log)
+	for i = #log, 1, -1 do
+		local e = log[i]
+		pcall(function() e.t[e.k] = e.orig end)
+	end
+	for i = #log, 1, -1 do log[i] = nil end
+end
+
 function Util.forEachWeapon(fn)
 	local pc = Util.findProductionContent()
 	if not pc then return 0 end
